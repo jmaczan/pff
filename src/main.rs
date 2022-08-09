@@ -1,15 +1,14 @@
-use icmp;
+use icmp::IcmpSocket;
 use std::net::ToSocketAddrs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::SystemTime;
 
-fn main() {
-    let addrs_iter = "cloudflare.com:443".to_socket_addrs();
+fn resolve_domain_ip(domain: &str) -> IpAddr {
+    let addrs_iter = domain.to_socket_addrs();
     match &addrs_iter {
         Ok(_) => {}
         Err(err) => {
-            println!("An error occured when resolving a domain name: \"{}\"", err);
-            return;
+            panic!("An error occured when resolving a domain name: \"{}\"", err);
         }
     }
     let raw_ip = addrs_iter.unwrap().next().unwrap().to_string();
@@ -22,8 +21,12 @@ fn main() {
             .parse::<u8>()
             .unwrap(),
     ));
+    ip_to_ping
+}
+
+fn connect_icmp_socket(ip_to_ping: IpAddr) -> IcmpSocket {
     let icmp_before_connect_timestamp = SystemTime::now();
-    let icmp_socket = icmp::IcmpSocket::connect(ip_to_ping);
+    let icmp_socket = IcmpSocket::connect(ip_to_ping);
     let icmp_after_connect_timestamp = SystemTime::now();
     match &icmp_socket {
         Ok(_) => println!(
@@ -34,13 +37,16 @@ fn main() {
                 .as_secs_f64()
         ),
         Err(err) => {
-            println!("Socket connection failed. {}", err);
-            return;
+            panic!("Socket connection failed. {}", err);
         }
     }
-    let ping_payload: &[u8] = &[1, 2]; // meaningless payload
+
+    icmp_socket.unwrap()
+}
+
+fn ping(mut icmp_socket: IcmpSocket, ping_payload: &[u8]) {
     let icmp_before_ping_timestamp = SystemTime::now();
-    let ping_result = icmp_socket.unwrap().send(ping_payload);
+    let ping_result = icmp_socket.send(ping_payload);
     let icmp_after_ping_timestamp = SystemTime::now();
     match ping_result {
         Ok(_) => {
@@ -63,4 +69,11 @@ fn main() {
             return;
         }
     }
+}
+
+fn main() {
+    let ip_to_ping = resolve_domain_ip("cloudflare.com:443");
+    let icmp_socket = connect_icmp_socket(ip_to_ping);
+    let ping_payload: &[u8] = &[1, 2]; // a meaningless payload
+    ping(icmp_socket, ping_payload);
 }
