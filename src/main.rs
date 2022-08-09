@@ -4,8 +4,15 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::SystemTime;
 
 fn main() {
-    let mut addrs_iter = "cloudflare.com:443".to_socket_addrs().unwrap();
-    let raw_ip = addrs_iter.next().unwrap().to_string();
+    let addrs_iter = "cloudflare.com:443".to_socket_addrs();
+    match &addrs_iter {
+        Ok(_) => {}
+        Err(err) => {
+            println!("An error occured when resolving a domain name: \"{}\"", err);
+            return;
+        }
+    }
+    let raw_ip = addrs_iter.unwrap().next().unwrap().to_string();
     let ip = raw_ip.split(".").collect::<Vec<_>>();
     let ip_to_ping = IpAddr::V4(Ipv4Addr::new(
         String::from(ip[0]).parse::<u8>().unwrap(),
