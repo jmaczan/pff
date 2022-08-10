@@ -7,6 +7,11 @@ use std::net::ToSocketAddrs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 use std::time::SystemTime;
+use std::{
+    io::{stdout, Write},
+    thread::sleep,
+};
+use spinners::{Spinner, Spinners};
 
 fn resolve_domain_ip(domain: &str) -> String {
     let addrs_iter = domain.to_socket_addrs();
@@ -79,7 +84,8 @@ fn ping(mut icmp_socket: IcmpSocket, ping_payload: &[u8]) {
 }
 
 fn print_average_ping(string: ColoredString, average_ping: Duration) {
-    println!("{} ({:?})", string, average_ping);
+    print!("\r{} ({:?})", string, average_ping);
+    println!();
 }
 
 fn main() {
@@ -94,10 +100,13 @@ fn main() {
     let mut average_ping = Duration::new(0, 0);
     let total_trials = 3;
     let mut trials_left = total_trials;
+    let mut stdout = stdout();
     loop {
         if trials_left == 0 {
             break;
         }
+        print!("\r{}... {}", "Measuring".blue().italic(), trials_left.to_string().magenta());
+        stdout.flush().unwrap();
         trials_left -= 1;
         match results.recv() {
             Ok(result) => match result {
