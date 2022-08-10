@@ -1,9 +1,14 @@
+use colored::*;
+use fastping_rs::PingResult::{Idle, Receive};
+use fastping_rs::Pinger;
 use icmp::IcmpSocket;
+use std::cmp::Ordering;
 use std::net::ToSocketAddrs;
 use std::net::{IpAddr, Ipv4Addr};
+use std::time::Duration;
 use std::time::SystemTime;
 
-fn resolve_domain_ip(domain: &str) -> IpAddr {
+fn resolve_domain_ip(domain: &str) -> String {
     let addrs_iter = domain.to_socket_addrs();
     match &addrs_iter {
         Ok(_) => {}
@@ -12,16 +17,18 @@ fn resolve_domain_ip(domain: &str) -> IpAddr {
         }
     }
     let raw_ip = addrs_iter.unwrap().next().unwrap().to_string();
-    let ip = raw_ip.split(".").collect::<Vec<_>>();
-    let ip_to_ping = IpAddr::V4(Ipv4Addr::new(
-        String::from(ip[0]).parse::<u8>().unwrap(),
-        String::from(ip[1]).parse::<u8>().unwrap(),
-        String::from(ip[2]).parse::<u8>().unwrap(),
-        String::from(ip[3].split(":").collect::<Vec<_>>()[0])
-            .parse::<u8>()
-            .unwrap(),
-    ));
-    ip_to_ping
+    let ip = raw_ip.split(":").collect::<Vec<_>>();
+    // let ip = raw_ip.split(".").collect::<Vec<_>>();
+    // let ip_to_ping = IpAddr::V4(Ipv4Addr::new(
+    //     String::from(ip[0]).parse::<u8>().unwrap(),
+    //     String::from(ip[1]).parse::<u8>().unwrap(),
+    //     String::from(ip[2]).parse::<u8>().unwrap(),
+    //     String::from(ip[3].split(":").collect::<Vec<_>>()[0])
+    //         .parse::<u8>()
+    //         .unwrap(),
+    // ));
+    // ip_to_ping
+    ip[0].to_string()
 }
 
 fn connect_icmp_socket(ip_to_ping: IpAddr) -> IcmpSocket {
@@ -71,9 +78,56 @@ fn ping(mut icmp_socket: IcmpSocket, ping_payload: &[u8]) {
     }
 }
 
+fn print_average_ping(string: ColoredString, average_ping: Duration) {
+    println!("{} ({:?})", string, average_ping);
+}
+
 fn main() {
-    let ip_to_ping = resolve_domain_ip("cloudflare.com:443");
-    let icmp_socket = connect_icmp_socket(ip_to_ping);
-    let ping_payload: &[u8] = &[1, 2]; // a meaningless payload
-    ping(icmp_socket, ping_payload);
+    let (pinger, results) = match Pinger::new(None, Some(56)) {
+        Ok((pinger, results)) => (pinger, results),
+        Err(e) => panic!("Error creating pinger: {}", e),
+    };
+    let ip = resolve_domain_ip("cloudflare.com:443");
+    pinger.add_ipaddr(&ip);
+    pinger.run_pinger();
+
+    let mut average_ping = Duration::new(0, 0);
+    let total_trials = 3;
+    let mut trials_left = total_trials;
+    loop {
+        if trials_left == 0 {
+            break;
+        }
+        trials_left -= 1;
+        match results.recv() {
+            Ok(result) => match result {
+                Idle { addr } => {
+                    println!("Idle Address {}.", addr);
+                }
+                Receive { addr: _, rtt } => {
+                    average_ping = average_ping.saturating_add(rtt);
+                }
+            },
+            Err(_) => panic!("Worker threads disconnected before the solution was found!"),
+        }
+    }
+
+    let average_ping = average_ping / total_trials;
+
+    if (average_ping).cmp(&Duration::from_millis(25)) == Ordering::Less {
+        print_average_ping("Excellent".bright_green().bold(), average_ping);
+    } else if average_ping.cmp(&Duration::from_millis(100)) == Ordering::Less {
+        print_average_ping("Good".green().bold(), average_ping);
+    } else if average_ping.cmp(&Duration::from_millis(500)) == Ordering::Less {
+        print_average_ping("Average".yellow().bold(), average_ping);
+    } else if average_ping.cmp(&Duration::from_millis(1000)) == Ordering::Less {
+        print_average_ping("Bad".bright_red().bold(), average_ping);
+    } else {
+        print_average_ping("Really bad".red().bold(), average_ping);
+    }
+
+    // let ip_to_ping = resolve_domain_ip("cloudflare.com:443");
+    // let icmp_socket = connect_icmp_socket(ip_to_ping);
+    // let ping_payload: &[u8] = &[1, 2]; // a meaningless payload
+    // ping(icmp_socket, ping_payload);
 }
