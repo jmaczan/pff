@@ -1,5 +1,5 @@
 # pff
-Examine Internet connection quality and status in terminal
+Examine your Internet connection quality in terminal
 
 ## Troubleshooting
 Issue:
@@ -10,3 +10,5 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 Solution:
 `sudo setcap cap_net_raw+ep ./target/debug/pff`
+
+Copyright Jędrzej Paweł Maczan 2022
