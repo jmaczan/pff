@@ -1,14 +1,11 @@
 use colored::*;
 use fastping_rs::PingResult::{Idle, Receive};
 use fastping_rs::Pinger;
-use icmp::IcmpSocket;
 use spinners::{Spinner, Spinners};
 use std::cmp::Ordering;
 use std::io::{stdout, Write};
 use std::net::ToSocketAddrs;
-use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
-use std::time::SystemTime;
 
 fn resolve_domain_ip(domain: &str) -> String {
     let addrs_iter = domain.to_socket_addrs();

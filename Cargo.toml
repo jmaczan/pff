@@ -2,13 +2,10 @@
 name = "pff"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Jedrzej Pawel Maczan <jedrzejpawel@maczan.pl>"]
+description = "Check your internet connection quality"
 
 [dependencies]
-http = "0.2.8"
-icmp = "0.3.0"
-reqwest = { version = "0.11.11", features = ["blocking"] }
 fastping-rs = "0.2.3"
 colored = "2.0.0"
 spinners = "4.1.0"
