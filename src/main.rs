@@ -2,6 +2,7 @@ use colored::*;
 use fastping_rs::PingResult::{Idle, Receive};
 use fastping_rs::Pinger;
 use icmp::IcmpSocket;
+use spinners::{Spinner, Spinners};
 use std::cmp::Ordering;
 use std::net::ToSocketAddrs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -11,7 +12,6 @@ use std::{
     io::{stdout, Write},
     thread::sleep,
 };
-use spinners::{Spinner, Spinners};
 
 fn resolve_domain_ip(domain: &str) -> String {
     let addrs_iter = domain.to_socket_addrs();
@@ -84,7 +84,7 @@ fn ping(mut icmp_socket: IcmpSocket, ping_payload: &[u8]) {
 }
 
 fn print_average_ping(string: ColoredString, average_ping: Duration) {
-    print!("\r{} ({:?})", string, average_ping);
+    print!("\r{} ({:?})                          ", string, average_ping);
     println!();
 }
 
@@ -101,11 +101,11 @@ fn main() {
     let total_trials = 3;
     let mut trials_left = total_trials;
     let mut stdout = stdout();
+    let mut sp = Spinner::new(Spinners::Dots9, "I'm checking your connection".into());
     loop {
         if trials_left == 0 {
             break;
         }
-        print!("\r{}... {}", "Measuring".blue().italic(), trials_left.to_string().magenta());
         stdout.flush().unwrap();
         trials_left -= 1;
         match results.recv() {
@@ -120,6 +120,7 @@ fn main() {
             Err(_) => panic!("Worker threads disconnected before the solution was found!"),
         }
     }
+    sp.stop();
 
     let average_ping = average_ping / total_trials;
 
