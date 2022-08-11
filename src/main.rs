@@ -24,7 +24,7 @@ fn resolve_domain_ip(domain: &str) -> Result<String, Error> {
 fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops: u32) {
     if ping_drops > TOTAL_TRIALS - 1 {
         print!(
-            "\rYour Internet connection seems to be either {} or {} ({:?}/{:?} ping requests failed)",
+            "\rYour Internet connection seems to be either {} or {} now ({:?}/{:?} ping requests failed)",
             "really bad".red().bold(),
             "offline".red().bold(),
             ping_drops,
@@ -32,7 +32,7 @@ fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops:
         );
     } else if ping_drops > ((TOTAL_TRIALS / 2) - 1) {
         print!(
-            "\rYour Internet connection seems to be {} ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
+            "\rYour Internet connection seems to be {} now ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
             string,
             average_ping,
             ping_drops,
@@ -40,7 +40,7 @@ fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops:
         );
     } else {
         print!(
-            "\rYour Internet connection is {} ({:?} ping on average)",
+            "\rYour Internet connection is {} now ({:?} ping on average)",
             string, average_ping
         );
     }
