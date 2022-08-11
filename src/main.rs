@@ -3,10 +3,13 @@ use fastping_rs::PingResult::{Idle, Receive};
 use fastping_rs::Pinger;
 use spinners::{Spinner, Spinners};
 use std::cmp::Ordering;
+use std::io::Error;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-fn resolve_domain_ip(domain: &str) -> Result<String, std::io::Error> {
+const TOTAL_TRIALS: u32 = 3;
+
+fn resolve_domain_ip(domain: &str) -> Result<String, Error> {
     let addrs_iter = domain.to_socket_addrs();
     match addrs_iter {
         Ok(_) => {
@@ -18,47 +21,73 @@ fn resolve_domain_ip(domain: &str) -> Result<String, std::io::Error> {
     }
 }
 
-fn print_average_ping(string: ColoredString, average_ping: Duration) {
-    print!(
-        "\rYour Internet connection is {} ({:?} ping on average)",
-        string, average_ping
-    );
+fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops: u32) {
+    if ping_drops > TOTAL_TRIALS - 1 {
+        print!(
+            "\rYour Internet connection seems to be either {} or {} ({:?}/{:?} ping requests failed)",
+            "really bad".red().bold(),
+            "offline".red().bold(),
+            ping_drops,
+            TOTAL_TRIALS
+        );
+    } else if ping_drops > ((TOTAL_TRIALS / 2) - 1) {
+        print!(
+            "\rYour Internet connection seems to be {}, but having stability issues ({:?}/{:?} ping requests failed)",
+            string,
+            ping_drops,
+            TOTAL_TRIALS
+        );
+    } else {
+        print!(
+            "\rYour Internet connection is {} ({:?} ping on average)",
+            string, average_ping
+        );
+    }
     println!();
 }
 
-fn print_result(average_ping: Duration, total_trials: u32, ping_drops: u32) {
-    let average_ping = average_ping / total_trials;
+fn print_result(average_ping: Duration, ping_drops: u32) {
+    let average_ping = average_ping / TOTAL_TRIALS;
 
     if (average_ping).cmp(&Duration::from_millis(25)) == Ordering::Less {
-        print_average_ping("excellent".bright_green().bold(), average_ping);
+        print_average_ping("excellent".bright_green().bold(), average_ping, ping_drops);
     } else if average_ping.cmp(&Duration::from_millis(100)) == Ordering::Less {
-        print_average_ping("good".green().bold(), average_ping);
+        print_average_ping("good".green().bold(), average_ping, ping_drops);
     } else if average_ping.cmp(&Duration::from_millis(500)) == Ordering::Less {
-        print_average_ping("average".yellow().bold(), average_ping);
+        print_average_ping("average".yellow().bold(), average_ping, ping_drops);
     } else if average_ping.cmp(&Duration::from_millis(1000)) == Ordering::Less {
-        print_average_ping("bad".bright_red().bold(), average_ping);
+        print_average_ping("bad".bright_red().bold(), average_ping, ping_drops);
     } else {
-        print_average_ping("really bad".red().bold(), average_ping);
+        print_average_ping("really bad".red().bold(), average_ping, ping_drops);
     }
 }
 
-fn create_pinger() -> (
-    fastping_rs::Pinger,
-    std::sync::mpsc::Receiver<fastping_rs::PingResult>,
-) {
-    match Pinger::new(None, Some(56)) {
-        Ok((pinger, results)) => (pinger, results),
-        Err(e) => panic!("Error creating pinger: {}", e),
-    }
+fn create_pinger() -> Result<
+    (
+        fastping_rs::Pinger,
+        std::sync::mpsc::Receiver<fastping_rs::PingResult>,
+    ),
+    String,
+> {
+    Pinger::new(None, Some(56))
 }
 
 fn main() {
-    let (pinger, results) = create_pinger();
+    let (pinger, results) = match create_pinger() {
+        Ok((pinger, results)) => (pinger, results),
+        Err(err) => {
+            println!(
+                "Are you connected to the Internet? I couldn't perform your internet examination. Technical reason: \"{}\"",
+                err.bright_red()
+            );
+            return;
+        }
+    };
     let ip = match resolve_domain_ip("cloudflare.com:443") {
         Ok(ip) => ip,
         Err(err) => {
             println!(
-                "An error occured when resolving a domain name: \"{}\"",
+                "Are you connected to the Internet? I couldn't perform your internet examination due to failed domain resolution. Technical reason: \"{}\"",
                 err.to_string().bright_red()
             );
             return;
@@ -69,10 +98,10 @@ fn main() {
     pinger.run_pinger();
 
     let mut average_ping = Duration::new(0, 0);
-    let total_trials = 3;
-    let mut trials_left = total_trials;
-    let mut spinner = Spinner::new(Spinners::Dots9, "I'm examining your ping".into());
+    let mut trials_left = TOTAL_TRIALS;
     let mut ping_drops = 0;
+    let mut ping_fails = 0;
+    let mut spinner = Spinner::new(Spinners::Dots9, "I'm examining your ping".into());
     loop {
         if trials_left == 0 {
             break;
@@ -87,10 +116,12 @@ fn main() {
                     average_ping = average_ping.saturating_add(rtt);
                 }
             },
-            Err(_) => panic!("Worker threads disconnected before the solution was found!"),
+            Err(_) => {
+                ping_fails += 1;
+            }
         }
     }
     spinner.stop();
 
-    print_result(average_ping, total_trials, ping_drops);
+    print_result(average_ping, ping_drops + ping_fails);
 }
