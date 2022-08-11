@@ -76,6 +76,10 @@ fn main() {
     let (pinger, results) = match create_pinger() {
         Ok((pinger, results)) => (pinger, results),
         Err(err) => {
+            if err == "Operation not permitted (os error 1)" {
+                println!("I couldn't perform your internet examination, due to lack of CAP_NET_RAW capabilities. To fix it, run:\nsudo setcap cap_net_raw+ep <path to pff>");
+                return;
+            }
             println!(
                 "Are you connected to the Internet? I couldn't perform your internet examination. Technical reason: \"{}\"",
                 err.bright_red()
@@ -101,7 +105,7 @@ fn main() {
     let mut trials_left = TOTAL_TRIALS;
     let mut ping_drops = 0;
     let mut ping_fails = 0;
-    let mut spinner = Spinner::new(Spinners::Dots9, "I'm examining your ping".into());
+    let mut spinner = Spinner::new(Spinners::Dots9, "I'm examining your connection".into());
     loop {
         if trials_left == 0 {
             break;
