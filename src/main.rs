@@ -32,8 +32,9 @@ fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops:
         );
     } else if ping_drops > ((TOTAL_TRIALS / 2) - 1) {
         print!(
-            "\rYour Internet connection seems to be {}, but having stability issues ({:?}/{:?} ping requests failed)",
+            "\rYour Internet connection seems to be {} ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
             string,
+            average_ping,
             ping_drops,
             TOTAL_TRIALS
         );
@@ -82,7 +83,7 @@ fn main() {
             }
             println!(
                 "Are you connected to the Internet? I couldn't perform your internet examination. Technical reason: \"{}\"",
-                err.bright_red()
+                err
             );
             return;
         }
@@ -91,8 +92,8 @@ fn main() {
         Ok(ip) => ip,
         Err(err) => {
             println!(
-                "Are you connected to the Internet? I couldn't perform your internet examination due to failed domain resolution. Technical reason: \"{}\"",
-                err.to_string().bright_red()
+                "Are you connected to the Internet?\nI couldn't perform your internet examination due to failed domain resolution. Technical reason: \"{}\"",
+                err.to_string()
             );
             return;
         }
