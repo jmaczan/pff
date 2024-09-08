@@ -7,23 +7,24 @@ use std::io::Error;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-const TOTAL_TRIALS: u32 = 3;
+const TOTAL_TRIALS: u8 = 3;
 
 fn resolve_domain_ip(domain: &str) -> Result<String, Error> {
-    let addrs_iter = domain.to_socket_addrs();
-    match addrs_iter {
-        Ok(_) => {
-            let raw_ip = addrs_iter.unwrap().next().unwrap().to_string();
-            let ip = raw_ip.split(":").collect::<Vec<_>>();
-            Ok(ip[0].to_string())
-        }
-        Err(err) => Err(err),
-    }
+    domain
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::NotFound,
+                "Couldn't resolve domain IP to check your internet connection",
+            )
+        })
+        .map(|addr| addr.ip().to_string())
 }
 
-fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops: u32) {
+fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops: u8) {
     if ping_drops > TOTAL_TRIALS - 1 {
-        print!(
+        println!(
             "\rYour Internet connection seems to be either {} or {} now ({:?}/{:?} ping requests failed)",
             "really bad".red().bold(),
             "offline".red().bold(),
@@ -31,7 +32,7 @@ fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops:
             TOTAL_TRIALS
         );
     } else if ping_drops > ((TOTAL_TRIALS / 2) - 1) {
-        print!(
+        println!(
             "\rYour Internet connection seems to be {} now ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
             string,
             average_ping,
@@ -39,16 +40,15 @@ fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops:
             TOTAL_TRIALS
         );
     } else {
-        print!(
+        println!(
             "\rYour Internet connection is {} now ({:?} ping on average)",
             string, average_ping
         );
     }
-    println!();
 }
 
-fn print_result(average_ping: Duration, ping_drops: u32) {
-    let average_ping = average_ping / TOTAL_TRIALS;
+fn print_result(average_ping: Duration, ping_drops: u8) {
+    let average_ping = average_ping / TOTAL_TRIALS.into();
 
     if (average_ping).cmp(&Duration::from_millis(25)) == Ordering::Less {
         print_average_ping("excellent".bright_green().bold(), average_ping, ping_drops);
