@@ -1,132 +1,145 @@
+use clap::Parser;
 use colored::*;
 use fastping_rs::PingResult::{Idle, Receive};
 use fastping_rs::Pinger;
 use spinners::{Spinner, Spinners};
-use std::cmp::Ordering;
-use std::io::Error;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
+use thiserror::Error;
 
-const TOTAL_TRIALS: u8 = 3;
+const PERMISSION_ERROR_MSG: &str = "Operation not permitted";
 
-fn resolve_domain_ip(domain: &str) -> Result<String, Error> {
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(short, long, default_value_t = 3)]
+    trials: u8,
+
+    #[clap(short, long, default_value = "cloudflare.com:443")]
+    domain: String,
+
+    #[clap(short, long, default_value_t = 56)]
+    payload_size: usize,
+}
+
+#[derive(Error, Debug)]
+enum AppError {
+    #[error("IO Error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Failed to create pinger {0}")]
+    PingerCreation(String),
+
+    #[error("Failed to create pinger due to insufficient permissions. To fix it on Linux, run: sudo setcap cap_net_raw+ep <path to pff>. On macOS, run pff with sudo")]
+    InsufficientPermissions,
+
+    #[error("No addresses found for the given domain")]
+    NoAddressFound,
+
+    #[error("Pinger error {0}")]
+    PingerError(#[from] std::sync::mpsc::RecvError),
+}
+
+struct PingStats {
+    average_ping: Duration,
+    ping_drops: u8,
+}
+
+fn resolve_domain_ip(domain: &str) -> Result<String, AppError> {
     domain
         .to_socket_addrs()?
         .next()
-        .ok_or_else(|| {
-            Error::new(
-                std::io::ErrorKind::NotFound,
-                "Couldn't resolve domain IP to check your internet connection",
-            )
-        })
+        .ok_or(AppError::NoAddressFound)
         .map(|addr| addr.ip().to_string())
 }
 
-fn print_average_ping(string: ColoredString, average_ping: Duration, ping_drops: u8) {
-    if ping_drops > TOTAL_TRIALS - 1 {
-        println!(
-            "\rYour Internet connection seems to be either {} or {} now ({:?}/{:?} ping requests failed)",
-            "really bad".red().bold(),
-            "offline".red().bold(),
-            ping_drops,
-            TOTAL_TRIALS
-        );
-    } else if ping_drops > ((TOTAL_TRIALS / 2) - 1) {
-        println!(
-            "\rYour Internet connection seems to be {} now ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
-            string,
-            average_ping,
-            ping_drops,
-            TOTAL_TRIALS
-        );
-    } else {
-        println!(
-            "\rYour Internet connection is {} now ({:?} ping on average)",
-            string, average_ping
-        );
+fn print_result(stats: &PingStats, trials: u8) {
+    let average_ping = stats.average_ping / trials.into();
+
+    let status = match average_ping {
+        d if d < Duration::from_millis(25) => "excellent".bright_green().bold(),
+        d if d < Duration::from_millis(100) => "good".green().bold(),
+        d if d < Duration::from_millis(500) => "average".yellow().bold(),
+        d if d < Duration::from_millis(1000) => "bad".bright_red().bold(),
+        _ => "really bad".red().bold(),
+    };
+
+    match stats.ping_drops {
+        n if n > trials - 1 => {
+            println!(
+                "\rYour Internet connection seems to be either {} or {} now ({:?}/{:?} ping requests failed)",
+                "really bad".red().bold(),
+                "offline".red().bold(),
+                stats.ping_drops,
+                trials
+            );
+        }
+        n if n > (trials / 2) - 1 => {
+            println!(
+                "\rYour Internet connection seems to be {} now ({:?} ping on average), but it has stability issues ({:?}/{:?} ping requests failed)",
+                status,
+                average_ping,
+                stats.ping_drops,
+                trials
+            );
+        }
+        _ => {
+            println!(
+                "\rYour Internet connection is {} now ({:?} ping on average)",
+                status, average_ping
+            );
+        }
     }
 }
 
-fn print_result(average_ping: Duration, ping_drops: u8) {
-    let average_ping = average_ping / TOTAL_TRIALS.into();
-
-    if (average_ping).cmp(&Duration::from_millis(25)) == Ordering::Less {
-        print_average_ping("excellent".bright_green().bold(), average_ping, ping_drops);
-    } else if average_ping.cmp(&Duration::from_millis(100)) == Ordering::Less {
-        print_average_ping("good".green().bold(), average_ping, ping_drops);
-    } else if average_ping.cmp(&Duration::from_millis(500)) == Ordering::Less {
-        print_average_ping("average".yellow().bold(), average_ping, ping_drops);
-    } else if average_ping.cmp(&Duration::from_millis(1000)) == Ordering::Less {
-        print_average_ping("bad".bright_red().bold(), average_ping, ping_drops);
-    } else {
-        print_average_ping("really bad".red().bold(), average_ping, ping_drops);
-    }
+fn create_pinger(
+    payload_size: usize,
+) -> Result<(Pinger, std::sync::mpsc::Receiver<fastping_rs::PingResult>), AppError> {
+    Pinger::new(None, Some(payload_size)).map_err(|e| {
+        if e.contains(PERMISSION_ERROR_MSG) {
+            return AppError::InsufficientPermissions;
+        }
+        AppError::PingerCreation(e)
+    })
 }
 
-fn create_pinger() -> Result<
-    (
-        fastping_rs::Pinger,
-        std::sync::mpsc::Receiver<fastping_rs::PingResult>,
-    ),
-    String,
-> {
-    Pinger::new(None, Some(56))
-}
-
-fn main() {
-    let (pinger, results) = match create_pinger() {
-        Ok((pinger, results)) => (pinger, results),
-        Err(err) => {
-            if err == "Operation not permitted (os error 1)" {
-                println!("I couldn't perform your internet examination, due to lack of CAP_NET_RAW capabilities. To fix it, run:\nsudo setcap cap_net_raw+ep <path to pff>");
-                return;
-            }
-            println!(
-                "Are you connected to the Internet? I couldn't perform your internet examination. Technical reason: \"{}\"",
-                err
-            );
-            return;
-        }
-    };
-    let ip = match resolve_domain_ip("cloudflare.com:443") {
-        Ok(ip) => ip,
-        Err(err) => {
-            println!(
-                "Are you connected to the Internet?\nI couldn't perform your internet examination due to failed domain resolution. Technical reason: \"{}\"",
-                err.to_string()
-            );
-            return;
-        }
-    };
-
+fn test_connection(
+    pinger: Pinger,
+    ip: String,
+    args: &Args,
+    results: std::sync::mpsc::Receiver<fastping_rs::PingResult>,
+) -> Result<PingStats, AppError> {
     pinger.add_ipaddr(&ip);
     pinger.run_pinger();
 
-    let mut average_ping = Duration::new(0, 0);
-    let mut trials_left = TOTAL_TRIALS;
-    let mut ping_drops = 0;
-    let mut ping_fails = 0;
-    let mut spinner = Spinner::new(Spinners::Dots9, "I'm examining your connection".into());
-    loop {
-        if trials_left == 0 {
-            break;
-        }
-        trials_left -= 1;
-        match results.recv() {
-            Ok(result) => match result {
-                Idle { addr: _ } => {
-                    ping_drops += 1;
-                }
-                Receive { addr: _, rtt } => {
-                    average_ping = average_ping.saturating_add(rtt);
-                }
-            },
-            Err(_) => {
-                ping_fails += 1;
-            }
+    let mut stats = PingStats {
+        average_ping: Duration::new(0, 0),
+        ping_drops: 0,
+    };
+
+    let mut spinner = Spinner::new(Spinners::Dots9, "Examining your connection".into());
+
+    for _ in 0..args.trials {
+        match results.recv()? {
+            Idle { addr: _ } => stats.ping_drops += 1,
+            Receive { addr: _, rtt } => stats.average_ping = stats.average_ping.saturating_add(rtt),
         }
     }
+
     spinner.stop();
 
-    print_result(average_ping, ping_drops + ping_fails);
+    Ok(stats)
+}
+
+fn main() -> Result<(), AppError> {
+    let args = Args::parse();
+    let (pinger, results) = create_pinger(args.payload_size)?;
+
+    let ip = resolve_domain_ip(&args.domain)?;
+
+    let stats = test_connection(pinger, ip, &args, results)?;
+
+    print_result(&stats, args.trials);
+
+    Ok(())
 }

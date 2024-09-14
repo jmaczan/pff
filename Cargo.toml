@@ -9,3 +9,5 @@ description = "Check your internet connection quality"
 fastping-rs = "0.2.3"
 colored = "2.0.0"
 spinners = "4.1.0"
+clap = { version = "4.5.17", features = ["derive"] }
+thiserror = "1.0.63"
