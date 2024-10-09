@@ -4,6 +4,6 @@ authors:
 - family-names: "Maczan"
   given-names: "Jędrzej Paweł"
   orcid: "https://orcid.org/0000-0003-1741-6064"
-title: "pff"
+title: "pff - Modern ping alternative for macOS and Linux"
 date-released: 2022-08-05
 url: "https://github.com/jmaczan/pff"
