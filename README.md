@@ -19,6 +19,19 @@ Run `cargo build --release` in a project root directory. You need Rust and Cargo
 
 A binary file will be available in `target/release/pff`
 
+## Cite
+If you use this software in your research, please use the following citation:
+
+```bibtex
+@misc{Maczan_pff_2024,
+  title = "Modern ping alternative for macOS and Linux",
+  author = "{Maczan, Jędrzej Paweł}",
+  howpublished = "\url{https://github.com/jmaczan/pff}",
+  year = 2022,
+  publisher = {GitHub}
+}
+```
+
 ## License
 GNU GPL v2
 
